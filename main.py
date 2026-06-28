@@ -1,6 +1,7 @@
 """
-AlgoQuant Studio v2.1 — Full Production SaaS
+AlgoQuant Studio v2.2 — Full Production SaaS
 Levels: Persistence (Supabase) + Auth (Google OAuth) + Auto Reports + Thumbnail Generator
++ MULTI-CHANNEL: Trading/Quant + Comedy channels with adaptive AI prompts
 + SHORT FIX: Format-aware script generation
 + NEW FEATURE: Long Script → 3 Shorts Extractor with Visual Plans
 Single file. Deploy: streamlit run algoquant_studio_v2.py
@@ -132,7 +133,7 @@ def login_page():
     <div style='text-align:center;max-width:420px;padding:3rem;background:#111318;border:1px solid #1e2229;border-radius:20px;'>
         <div style='font-size:3rem;margin-bottom:0.5rem;'>⚡</div>
         <div style='font-size:1.8rem;font-weight:700;color:#00e5a0;margin-bottom:0.25rem;'>AlgoQuant Studio</div>
-        <div style='font-size:0.82rem;color:#6b7280;margin-bottom:2rem;letter-spacing:0.08em;text-transform:uppercase;'>Content Intelligence for Algo Creators</div>
+        <div style='font-size:0.82rem;color:#6b7280;margin-bottom:2rem;letter-spacing:0.08em;text-transform:uppercase;'>Content Intelligence for Creators</div>
         <div style='font-size:0.9rem;color:#9ca3af;margin-bottom:2rem;line-height:1.6;'>
             The AI system that tells you exactly what video to make, writes the script,
             scores the title, and designs the thumbnail.
@@ -198,6 +199,8 @@ def init_session():
             'youtube_api_key': '',
             'email'          : '',
         }
+    if 'channel_type' not in st.session_state:
+        st.session_state['channel_type'] = "📈 Trading/Quant"
     try:
         if hasattr(st, 'secrets'):
             cfg = st.session_state['config']
@@ -284,7 +287,10 @@ FUNNEL_DESCRIPTIONS = {
     'saas'      : 'SaaS platform waitlist — mention you are building a tool that automates this for traders',
     'ea'        : 'MQL5 EA product — full working EA available on MQL5 market link in description',
     'course'    : 'Upcoming course — covered in full detail in the course link in description',
-    'freelance' : 'Freelance service — you build custom EAs for traders link in description'
+    'freelance' : 'Freelance service — you build custom EAs for traders link in description',
+    'merch'     : 'Merchandise — branded clothing/accessories link in description',
+    'sponsor'   : 'Sponsorship — mention sponsor naturally in video',
+    'none'      : 'No funnel — pure content for growth'
 }
 FORMAT_CONTEXT = {
     'short': 'SHORT video under 60 seconds. Script under 130 words. Result in first sentence. Never Hi or Welcome.',
@@ -340,8 +346,40 @@ def call_gemini_text(model, prompt, max_tokens=2000):
             else: raise e
 
 
-def build_context():
-    return f"""
+def build_context(channel_type="📈 Trading/Quant"):
+    """Build context based on active channel"""
+    
+    if channel_type == "🎭 Comedy":
+        return f"""
+Channel: Comedy/Entertainment Channel
+Niche: Comedy, entertainment, relatable humor, everyday life observations, dating, work, social situations
+Target: 18-35 demographic, people who enjoy observational comedy, viral content consumers
+Creator: {cfg.get('creator_bio','Content creator with a unique perspective')}
+Style: Self-deprecating, ironic, absurd analogies, exaggeration, relatable pain points, storytelling with twists
+Products: Merch, Patreon, sponsorships
+
+What works for comedy content:
+- Relatable situations ("we've all been there")
+- Absurd comparisons and analogies
+- Self-mockery (you're the fool, not the audience)
+- Trending topics and memes
+- Short, punchy hooks that grab attention immediately
+- Storytelling with unexpected twists
+- Observational humor about dating, work, social situations
+- Callback humor and running jokes
+
+Stats: {cfg.get('subscribers',5)} subs · {cfg.get('avg_ctr',2.5)}% CTR · {cfg.get('watch_hours',1.4)}h
+
+Hook rules (CRITICAL for comedy):
+- First 3 seconds MUST be the punchline or bold statement
+- NEVER explain setup first - start with the funny part
+- Pattern interrupt immediately
+- Keep it PG-13, shareable, relatable
+- End with callback or unexpected twist
+- Use "you" language to make it personal
+"""
+    else:  # Trading/Quant
+        return f"""
 Channel: {cfg.get('channel_name','AlgoQuant Trading')}
 Niche: Algorithmic trading, quantitative finance, automated trading systems
 Target: Prop firm traders (FTMO/Funded Next), manual traders, crypto quants, algo investors
@@ -432,7 +470,7 @@ def analyze_patterns(videos, threshold=5000):
 
 def ai_virality(model,idea,fmt,funnel,ctx):
     return call_gemini(model,f"""
-You are a YouTube growth expert for algorithmic trading.
+You are a YouTube growth expert.
 {ctx}
 Idea: {idea}
 Format: {FORMAT_CONTEXT[fmt]}
@@ -446,7 +484,7 @@ Return ONLY valid JSON no markdown:
 
 def ai_title_hook(model,idea,fmt,funnel,ctx):
     return call_gemini(model,f"""
-You are a YouTube growth expert for algorithmic trading.
+You are a YouTube growth expert.
 {ctx}
 Idea: {idea}
 Format: {FORMAT_CONTEXT[fmt]}
@@ -459,7 +497,7 @@ Return ONLY valid JSON no markdown:
 
 
 def ai_script_part(model, idea, title, hook, funnel, ctx, fmt, part, prev=''):
-    """✅ FIXED: Now respects 'short' vs 'long' format."""
+    """Format-aware script generation"""
     cont = f'\nContinue from: "{prev[-300:]}"' if part == 2 else ''
     
     if fmt == 'short':
@@ -468,7 +506,7 @@ def ai_script_part(model, idea, title, hook, funnel, ctx, fmt, part, prev=''):
         inst = 'Write FIRST HALF ~1000 words. End at natural transition.' if part == 1 else 'Write SECOND HALF ~1000 words. End with subscribe CTA then funnel CTA.'
         
     return call_gemini_text(model, f"""
-You are a YouTube scriptwriter for algorithmic trading.
+You are a YouTube scriptwriter.
 {ctx}
 Format: {FORMAT_CONTEXT[fmt]}
 Title: {title}
@@ -484,7 +522,7 @@ Return ONLY raw script text. No JSON. No markdown.
 
 def ai_packaging(model,idea,title,fmt,funnel,ctx):
     return call_gemini(model,f"""
-You are a YouTube packaging expert for algorithmic trading.
+You are a YouTube packaging expert.
 {ctx}
 Title: {title}
 Idea: {idea}
@@ -500,7 +538,7 @@ def ai_suggestions(model,trending,existing,ctx):
     tt='\n'.join([f"- {v['title']} ({v.get('views_per_day',0):,.0f}/day,{v.get('days_old',0)}d)" for v in trending[:5]])
     et='\n'.join([f"- {t}" for t in existing[:10]])
     return call_gemini(model,f"""
-YouTube content strategist for algorithmic trading.
+YouTube content strategist.
 {ctx}
 Trending:\n{tt}
 Posted (do not repeat):\n{et}
@@ -520,7 +558,7 @@ def ai_score(model,title,hook,ctx,real_ctr=None,real_ret=None):
     cal=f'Real CTR:{real_ctr}%. Retention:{real_ret}%. Calibrate.' if real_ctr else ''
     hs_=f'Score this hook:\n{hook}' if hook else 'No hook.'
     return call_gemini(model,f"""
-YouTube growth expert for algorithmic trading.
+YouTube growth expert.
 {ctx}
 Format:{fmt_note}
 Title:{title}
@@ -536,7 +574,7 @@ Return ONLY valid JSON no markdown:
 
 def ai_thumbnail_prompt(model, title, key_result, style='dark'):
     result = call_gemini(model, f"""
-You are a thumbnail designer for algorithmic trading YouTube.
+You are a thumbnail designer for YouTube.
 Video title: {title}
 Key result: {key_result}
 Style: {style}
@@ -560,12 +598,12 @@ def generate_thumbnail_image(prompt_text):
 
 
 def ai_extract_shorts_from_long(model, long_script, ctx, funnel='ea'):
-    """✅ NEW: Extract 3 distinct Shorts from a long script."""
+    """Extract 3 distinct Shorts from a long script."""
     return call_gemini(model, f"""
-You are a YouTube Shorts strategist for algorithmic trading.
+You are a YouTube Shorts strategist.
 {ctx}
 Original Long Script:
-{long_script[:4000]}  # Truncate for token limit if huge
+{long_script[:4000]}
 
 Extract 3 completely different Shorts from this long script. Each Short must focus on a distinct concept, trap, or result from the original.
 Rules:
@@ -593,7 +631,7 @@ def generate_weekly_report(model, competitor_data, channel_config):
     ctx = build_context()
     tt = '\n'.join([f"- {v['title']} ({v.get('views_per_day',0):,.0f}/day)" for v in trending[:5]])
     return call_gemini(model, f"""
-YouTube content strategist for algorithmic trading.
+YouTube content strategist.
 {ctx}
 Trending this week:\n{tt}
 Channel stats: {channel_config.get('subscribers',5)} subs, {channel_config.get('avg_ctr',2.5)}% CTR, {channel_config.get('watch_hours',1.4)}h watch time.
@@ -690,6 +728,19 @@ with st.sidebar:
 
     page = st.radio("", ["🏠  Dashboard","🔍  Competitor Intel","📊  My Channel",
          "🏭  Video Factory","📁  History","📧  Weekly Report","⚙️  Settings"], label_visibility="collapsed")
+
+    # Channel Selector
+    st.markdown("<hr style='border-color:#1e2229;margin:1rem 0;'>", unsafe_allow_html=True)
+    section("Active Channel")
+    channel_type = st.radio(
+        "Working on:",
+        ["📈 Trading/Quant", "🎭 Comedy"],
+        index=0 if st.session_state.get('channel_type') == "📈 Trading/Quant" else 1,
+        label_visibility="collapsed",
+        key="channel_selector"
+    )
+    st.session_state['channel_type'] = channel_type
+    st.markdown(f"<div style='font-size:0.75rem;color:#6b7280;margin-top:0.5rem;'>AI prompts adapt to: <b style='color:#00e5a0;'>{channel_type}</b></div>", unsafe_allow_html=True)
 
     st.markdown("<hr style='border-color:#1e2229;margin:1rem 0;'>", unsafe_allow_html=True)
     section("Channel Status")
@@ -842,25 +893,30 @@ def page_analytics():
 
 def page_factory():
     st.markdown("<h1 style='font-size:1.8rem;margin-bottom:0.25rem;'>🏭 Video Factory</h1>",unsafe_allow_html=True)
+    
+    # Show active channel
+    channel_type = st.session_state.get('channel_type', "📈 Trading/Quant")
+    st.markdown(f"<div style='font-size:0.85rem;color:#6b7280;margin-bottom:1rem;'>Active Channel: <b style='color:#00e5a0;'>{channel_type}</b></div>", unsafe_allow_html=True)
+    
     st.markdown("<p style='color:#6b7280;font-size:0.9rem;margin-bottom:2rem;'>One idea in. Full video package out. Title · Hook · Script · Thumbnail · SEO · Shorts.</p>",unsafe_allow_html=True)
     gemini_key=cfg.get('gemini_api_key','')
     if not gemini_key:
         st.warning("⚠️  Add your Gemini API key in Settings.")
         return
     
-    # ✅ UPDATED: Added 5th tab for Long → Shorts Extractor
     tab1,tab2,tab3,tab4,tab5=st.tabs(["🏭  Full Factory","💡  Auto Suggest","📊  Title Scorer","🖼️  Thumbnail Generator", "📐  Long → Shorts"])
 
-    # ── FULL FACTORY ──
     with tab1:
         section("Describe your video idea")
         col1,col2,col3=st.columns([3,1,1])
-        with col1: idea=st.text_area("Idea",placeholder="e.g. Build a prop firm EA in MQL5 that monitors daily drawdown and shuts down when FTMO limit is hit",height=80,label_visibility='collapsed')
+        with col1:
+            placeholder_text = "e.g. Build a prop firm EA in MQL5 that monitors daily drawdown..." if "Trading" in channel_type else "e.g. Why my dating life is like a failed backtest..."
+            idea=st.text_area("Idea",placeholder=placeholder_text,height=80,label_visibility='collapsed')
         with col2: fmt=st.selectbox("Format",["long","short"])
         with col3: funnel=st.selectbox("Funnel",list(FUNNEL_DESCRIPTIONS.keys()))
         if st.button("⚡  Run Video Factory",use_container_width=True) and idea.strip():
             model=get_model()
-            ctx=build_context()
+            ctx=build_context(channel_type)
             st.markdown("<hr class='divider'>",unsafe_allow_html=True)
             section("Step 1 — Virality Check")
             with st.spinner("Checking virality..."):
@@ -895,7 +951,6 @@ def page_factory():
             st.markdown("<hr class='divider'>",unsafe_allow_html=True)
             section("Step 3 — Full Script")
             
-            # ✅ FIXED: Format-aware script generation
             if fmt == 'short':
                 with st.spinner("Writing Short script (100-130 words)..."):
                     try: script = ai_script_part(model, idea, th['title'], th['hook_script'], funnel, ctx, fmt, 1)
@@ -935,7 +990,6 @@ def page_factory():
             cta=pk.get('cta_script','')
             rec=th_data.get('recommended','1')
             
-            # ✅ FIXED: Thumbnail options rendering (no nested f-strings)
             tc1, tc2 = st.columns(2)
             for col, key in zip([tc1, tc2], ['option_1', 'option_2']):
                 with col:
@@ -975,13 +1029,13 @@ def page_factory():
             st.markdown("<hr class='divider'>",unsafe_allow_html=True)
             st.markdown(f"<div style='background:rgba(0,229,160,0.05);border:1px solid rgba(0,229,160,0.2);border-radius:12px;padding:1.25rem;'><div style='font-size:0.9rem;font-weight:700;color:#00e5a0;margin-bottom:0.75rem;'>✅  Video Factory Complete — saved to History</div><div style='display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem;'><span style='font-size:0.8rem;color:#9ca3af;'>Virality <b style='color:#00e5a0;'>{vs}/100</b></span><span style='font-size:0.8rem;color:#9ca3af;'>Title <b style='color:#00e5a0;'>{ts}/100</b></span><span style='font-size:0.8rem;color:#00e5a0;'>Hook <b>{hs}/100</b></span><span style='font-size:0.8rem;color:#9ca3af;'>Script <b style='color:#e8eaf0;'>{wc} words</b></span><span style='font-size:0.8rem;color:#9ca3af;'>~{est} min</span></div><div style='font-size:0.8rem;color:#6b7280;line-height:1.8;'>1. Download TTS script → paste into Chatterbox &nbsp;·&nbsp; 2. Build thumbnail in Canva &nbsp;·&nbsp; 3. Record OBS &nbsp;·&nbsp; 4. Sync Shotcut &nbsp;·&nbsp; 5. Upload with SEO &nbsp;·&nbsp; 6. Come back to History to log real CTR</div></div>",unsafe_allow_html=True)
 
-    # ── AUTO SUGGEST ──
     with tab2:
         section("Auto-suggest 3 video ideas from competitor trends")
         st.markdown("<div style='font-size:0.8rem;color:#6b7280;margin-bottom:1rem;'>Run Competitor Intel first for best results.</div>",unsafe_allow_html=True)
         existing=[v['title'] for v in DEFAULT_VIDEOS]
         if st.button("💡  Generate 3 Video Ideas",use_container_width=True):
-            model=get_model(); ctx=build_context()
+            model=get_model()
+            ctx=build_context(channel_type)
             trending=st.session_state.get('competitor_trending',[])
             if not trending:
                 trending=[{'title':'AI trading bot Python','views_per_day':1200,'days_old':5},{'title':'FTMO prop firm algo','views_per_day':800,'days_old':10}]
@@ -1012,7 +1066,6 @@ def page_factory():
                 st.markdown(card_html, unsafe_allow_html=True)
             st.info("💡 Pick one idea, go to Full Factory tab, paste it as your idea.")
 
-    # ── TITLE SCORER ──
     with tab3:
         section("Score a title and hook before you record")
         score_title=st.text_input("Title",placeholder="e.g. I Built a Prop Firm EA That Passed FTMO in 30 Days")
@@ -1021,7 +1074,8 @@ def page_factory():
         with c1_: rctr=st.number_input("Real CTR % (if posted)",min_value=0.0,value=0.0,format="%.1f")
         with c2_: rret=st.number_input("Real Retention % (if posted)",min_value=0.0,value=0.0,format="%.1f")
         if st.button("📊  Score Title & Hook",use_container_width=True) and score_title.strip():
-            model=get_model(); ctx=build_context()
+            model=get_model()
+            ctx=build_context(channel_type)
             with st.spinner("Scoring..."):
                 try: result=ai_score(model,score_title,score_hook,ctx,rctr if rctr>0 else None,rret if rret>0 else None)
                 except Exception as e: st.error(str(e)); return
@@ -1050,7 +1104,6 @@ def page_factory():
                     st.markdown(f"<div class='step-box' style='border-left-color:{border};margin-bottom:0.5rem;'><div style='font-size:0.72rem;font-weight:700;color:#6b7280;margin-bottom:4px;'>VERSION {hw['version']} — {hw['type']}{label}</div><div class='script-block' style='font-size:0.78rem;padding:0.6rem 0.8rem;margin-bottom:6px;'>{hw['script']}</div><div style='font-size:0.72rem;color:#6b7280;'>{hw['why']}</div></div>",unsafe_allow_html=True)
             step_box("🖼️ Thumbnail Concept",result.get('thumbnail_concept',''))
 
-    # ── THUMBNAIL GENERATOR ──
     with tab4:
         section("AI Thumbnail Generator")
         st.markdown("<div style='font-size:0.82rem;color:#6b7280;margin-bottom:1rem;'>Generates a thumbnail brief + actual image using AI. Free via Pollinations AI.</div>",unsafe_allow_html=True)
@@ -1061,7 +1114,8 @@ def page_factory():
         with col_brief: brief_btn=st.button("📋  Generate Design Brief",use_container_width=True)
         with col_gen:   gen_btn  =st.button("🖼️  Generate Thumbnail Image",use_container_width=True)
         if brief_btn and th_title:
-            model=get_model(); ctx=build_context()
+            model=get_model()
+            ctx=build_context(channel_type)
             with st.spinner("Generating thumbnail brief..."):
                 try: th_brief=ai_thumbnail_prompt(model,th_title,th_result_text,th_style)
                 except Exception as e: st.error(str(e)); return
@@ -1094,7 +1148,6 @@ def page_factory():
                 else:
                     st.error("Image generation failed. Try the design brief instead and build in Canva manually.")
 
-    # ── 📐 LONG → SHORTS EXTRACTOR (NEW) ──
     with tab5:
         section("📐 Long Script → 3 Shorts Extractor")
         st.markdown("<div style='font-size:0.8rem;color:#6b7280;margin-bottom:1rem;'>Paste your long-form script below. AI will extract 3 distinct, high-retention Shorts with titles, hooks, scripts, SEO descriptions, and frame-by-frame visual plans.</div>", unsafe_allow_html=True)
@@ -1105,7 +1158,7 @@ def page_factory():
         with col_b: 
             if st.button("⚡  Extract 3 Shorts", use_container_width=True) and long_script_input.strip():
                 model = get_model()
-                ctx = build_context()
+                ctx = build_context(channel_type)
                 with st.spinner("Analyzing script & extracting Shorts..."):
                     try:
                         result = ai_extract_shorts_from_long(model, long_script_input, ctx, ext_funnel)
